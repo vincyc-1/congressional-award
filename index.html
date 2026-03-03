@@ -229,6 +229,19 @@ tbody tr:last-child td { border-bottom: none; }
   .add-row { grid-template-columns: 1fr 1fr; }
   .add-row input:first-child { grid-column: 1/-1; }
 }
+
+#save-indicator {
+  position: fixed; bottom: 20px; right: 24px;
+  background: var(--surface, rgba(255,255,255,0.08));
+  border: 1px solid var(--border, rgba(255,255,255,0.12));
+  color: var(--accent, #a78bfa);
+  font-family: 'Outfit', sans-serif; font-size: 12px;
+  padding: 6px 14px; border-radius: 20px;
+  backdrop-filter: blur(12px);
+  opacity: 0; transition: opacity 0.4s ease;
+  pointer-events: none; z-index: 999;
+  letter-spacing: 0.5px;
+}
 </style>
 </head>
 <body class="theme-galaxy">
@@ -486,6 +499,8 @@ tbody tr:last-child td { border-bottom: none; }
   <circle cx="1150" cy="205" r="1.8" fill="rgba(180,255,120,0.55)" class="float-anim" style="animation-delay:1.7s"/>
 </svg>
 
+<div id="save-indicator">✓ saved</div>
+
 <div class="container">
   <header>
     <div class="title">Activity Tracker</div>
@@ -558,10 +573,59 @@ window.addEventListener('resize', function() { resizeCanvas(); initStars(); });
 document.getElementById('theme-bar').addEventListener('click', function(e) {
   var btn = e.target.closest('[data-theme]');
   if (!btn) return;
-  document.body.className = 'theme-' + btn.getAttribute('data-theme');
+  var theme = btn.getAttribute('data-theme');
+  document.body.className = 'theme-' + theme;
   document.querySelectorAll('.theme-btn').forEach(function(b) { b.classList.remove('active'); });
   btn.classList.add('active');
+  saveTheme(theme);
 });
+
+// ── Storage ────────────────────────────────────────────────────────────────
+var STORAGE_KEY = 'tracker-data';
+var THEME_KEY   = 'tracker-theme';
+
+async function saveAll() {
+  try {
+    await window.storage.set(STORAGE_KEY, JSON.stringify({ sections: sections, nextSid: nextSid }));
+    showSaved();
+  } catch(e) { console.warn('Save failed', e); }
+}
+
+async function saveTheme(theme) {
+  try { await window.storage.set(THEME_KEY, theme); } catch(e) {}
+}
+
+async function loadAll() {
+  try {
+    var tr = await window.storage.get(THEME_KEY);
+    if (tr && tr.value) {
+      var t = tr.value;
+      document.body.className = 'theme-' + t;
+      document.querySelectorAll('.theme-btn').forEach(function(b) {
+        b.classList.toggle('active', b.getAttribute('data-theme') === t);
+      });
+    }
+  } catch(e) {}
+  try {
+    var res = await window.storage.get(STORAGE_KEY);
+    if (res && res.value) {
+      var parsed = JSON.parse(res.value);
+      if (parsed.sections && parsed.sections.length) {
+        sections = parsed.sections;
+        nextSid  = parsed.nextSid || (sections.length + 2);
+      }
+    }
+  } catch(e) {}
+  render();
+}
+
+function showSaved() {
+  var el = document.getElementById('save-indicator');
+  if (!el) return;
+  el.style.opacity = '1';
+  clearTimeout(el._t);
+  el._t = setTimeout(function() { el.style.opacity = '0'; }, 1800);
+}
 
 // ── Data ───────────────────────────────────────────────────────────────────
 var sections = [{ id: 's1', name: 'General', rows: [] }];
@@ -645,6 +709,7 @@ function render() {
       var date = inpDate.value;
       if (!activity && !time && !date) return;
       sec.rows.push({ id: 'r' + Date.now(), activity: activity, time: time, date: date });
+      saveAll();
       render();
     }
 
@@ -702,11 +767,13 @@ function deleteRow(sid, rid) {
   var sec = sections.find(function(s) { return s.id === sid; });
   if (!sec) return;
   sec.rows = sec.rows.filter(function(r) { return r.id !== rid; });
+  saveAll();
   render();
 }
 
 function deleteSection(sid) {
   sections = sections.filter(function(s) { return s.id !== sid; });
+  saveAll();
   render();
 }
 
@@ -721,13 +788,15 @@ document.getElementById('add-section-btn').addEventListener('click', function() 
   if (!name) return;
   sections.push({ id: 's' + nextSid++, name: name, rows: [] });
   inp.value = '';
+  saveAll();
   render();
 });
 document.getElementById('new-section-name').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') document.getElementById('add-section-btn').click();
 });
 
-render();
+// ── Boot ───────────────────────────────────────────────────────────────────
+loadAll();
 
 })();
 </script>
